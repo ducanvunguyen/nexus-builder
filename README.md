@@ -13,11 +13,11 @@ In modern embedded systems, reliability is everything. Nexus-Builder moves away 
 
 ## 🛠 Quick Start
 ```bash
-# Clone the repo (Thay link duới đây bằng link thật của bạn)
+# Clone the repo
 git clone https://github.com/ducanvunguyen/nexus-builder.git
 cd nexus-builder
 
-# Cấp quyền thực thi
+# Grant execution permission
 chmod +x scripts/*.sh core/*.sh tests/*.sh
 
 # Build an image for Flipper One (Simulation)
