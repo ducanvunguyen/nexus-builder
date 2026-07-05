@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+# nexus — the unified command line for Nexus-Builder.
+#
+# One friendly entry point that ties together the building blocks scattered
+# under core/ and scripts/. Run `./nexus help` for the full command list.
+#
+# Design notes:
+#   * Pure Bash + coreutils; no daemon, no config files, nothing to install.
+#   * Read-only by default. Nothing here formats disks or writes to hardware.
+#   * Colours are disabled automatically when output is not a terminal, or when
+#     $NO_COLOR is set, or with the global --no-color flag.
+
+set -euo pipefail
+
+NEXUS_VERSION="0.2.0"
+
+# ---------------------------------------------------------------------------
+# Locate the project root so `nexus` works from any directory or a symlink.
+# ---------------------------------------------------------------------------
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -h "$SOURCE" ]]; do
+    dir="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ "$SOURCE" != /* ]] && SOURCE="$dir/$SOURCE"
+done
+NEXUS_ROOT="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+# ---------------------------------------------------------------------------
+# Presentation helpers.
+# ---------------------------------------------------------------------------
+USE_COLOR=1
+if [[ -n "${NO_COLOR:-}" || ! -t 1 ]]; then
+    USE_COLOR=0
+fi
+
+_c() { # _c <ansi-code> <text>
+    if [[ "$USE_COLOR" -eq 1 ]]; then
+        printf '\033[%sm%s\033[0m' "$1" "$2"
+    else
+        printf '%s' "$2"
+    fi
+}
+
+log_info() { printf '%s %s\n' "$(_c '1;34' '::')" "$*"; }
+log_ok() { printf '%s %s\n' "$(_c '1;32' 'OK')" "$*"; }
+log_warn() { printf '%s %s\n' "$(_c '1;33' '!!')" "$*" >&2; }
+log_err() { printf '%s %s\n' "$(_c '1;31' 'XX')" "$*" >&2; }
+
+die() {
+    log_err "$*"
+    exit 1
+}
+
+# ---------------------------------------------------------------------------
+# Load the core modules.
+# ---------------------------------------------------------------------------
+# shellcheck source=core/ab-mgr.sh
+source "$NEXUS_ROOT/core/ab-mgr.sh"
+# shellcheck source=core/integrity-check.sh
+source "$NEXUS_ROOT/core/integrity-check.sh"
+
+# ---------------------------------------------------------------------------
+# Commands.
+# ---------------------------------------------------------------------------
+cmd_version() {
+    printf 'nexus %s\n' "$NEXUS_VERSION"
+}
+
+cmd_help() {
+    cat <<EOF
+$(_c '1;36' 'Nexus-Builder') — immutable A/B Linux image factory
+
+$(_c '1;37' 'USAGE')
+  nexus <command> [options]
+
+$(_c '1;37' 'COMMANDS')
+  build [--dry-run] [board.conf]   Generate a flashable disk image
+  slot                             Show the active boot slot
+  slot get                         Print the active slot (A or B)
+  slot set <A|B>                   Select a boot slot (atomic)
+  slot switch [A|B]                Toggle, or switch to a specific slot
+  verify <file> <sha256>           Check a file against an expected digest
+  doctor                           Check host dependencies
+  test                             Run the test suite
+  version                          Print the nexus version
+  help                             Show this help
+
+$(_c '1;37' 'GLOBAL OPTIONS')
+  --no-color                       Disable coloured output
+
+$(_c '1;37' 'ENVIRONMENT')
+  NEXUS_BOOTENV                    Path to the (simulated) boot-env file
+                                   (default: /tmp/nexus-boot-env.sim)
+  NO_COLOR                         If set, disables coloured output
+
+$(_c '1;37' 'EXAMPLES')
+  ./nexus doctor
+  ./nexus build --dry-run
+  ./nexus slot set B
+  ./nexus verify output/nexus-os-flipper-one.img \$(cat image.sha256)
+EOF
+}
+
+cmd_doctor() {
+    log_info "Nexus-Builder doctor — checking the host environment"
+    printf '\n'
+
+    local rc=0
+
+    printf '  %-12s %s\n' "bash" "$(_c '1;32' "${BASH_VERSION}")"
+
+    # Tools that every command relies on.
+    local required=(sed awk mktemp sha256sum)
+    local t path
+    for t in "${required[@]}"; do
+        if path="$(command -v "$t" 2>/dev/null)"; then
+            printf '  %-12s %s %s\n' "$t" "$(_c '1;32' 'found')" "$path"
+        else
+            printf '  %-12s %s\n' "$t" "$(_c '1;31' 'MISSING (required)')"
+            rc=1
+        fi
+    done
+
+    # Tools only needed to write a real image (not for --dry-run).
+    local optional=(truncate sgdisk)
+    for t in "${optional[@]}"; do
+        if path="$(command -v "$t" 2>/dev/null)"; then
+            printf '  %-12s %s %s\n' "$t" "$(_c '1;32' 'found')" "$path"
+        else
+            printf '  %-12s %s\n' "$t" "$(_c '1;33' 'missing (needed for real builds)')"
+        fi
+    done
+
+    printf '\n'
+    if [[ "$rc" -eq 0 ]]; then
+        log_ok "All required dependencies are present."
+    else
+        log_err "Some required dependencies are missing (see above)."
+    fi
+    return "$rc"
+}
+
+cmd_build() {
+    exec "$NEXUS_ROOT/scripts/build-image.sh" "$@"
+}
+
+cmd_slot() {
+    local action="${1:-get}"
+    case "$action" in
+    "" | get)
+        get_active_slot
+        ;;
+    set)
+        [[ $# -ge 2 ]] || die "usage: nexus slot set <A|B>"
+        set_active_slot "$2"
+        ;;
+    switch)
+        if [[ $# -ge 2 ]]; then
+            set_active_slot "$2" && printf '%s\n' "$2"
+        else
+            toggle_slot
+        fi
+        ;;
+    *)
+        die "unknown slot action '$action' (expected get, set, or switch)"
+        ;;
+    esac
+}
+
+cmd_verify() {
+    [[ $# -ge 2 ]] || die "usage: nexus verify <file> <sha256>"
+    if verify_system "$1" "$2"; then
+        log_ok "Integrity verified for $1"
+    else
+        die "Integrity check FAILED for $1"
+    fi
+}
+
+cmd_test() {
+    exec "$NEXUS_ROOT/tests/run.sh" "$@"
+}
+
+# ---------------------------------------------------------------------------
+# Argument parsing / dispatch.
+# ---------------------------------------------------------------------------
+main() {
+    local args=()
+    local cmd=""
+
+    for arg in "$@"; do
+        case "$arg" in
+        --no-color)
+            USE_COLOR=0
+            ;;
+        *)
+            if [[ -z "$cmd" ]]; then
+                cmd="$arg"
+            else
+                args+=("$arg")
+            fi
+            ;;
+        esac
+    done
+
+    case "${cmd:-help}" in
+    build) cmd_build "${args[@]+"${args[@]}"}" ;;
+    slot) cmd_slot "${args[@]+"${args[@]}"}" ;;
+    verify) cmd_verify "${args[@]+"${args[@]}"}" ;;
+    doctor) cmd_doctor ;;
+    test) cmd_test "${args[@]+"${args[@]}"}" ;;
+    version | --version | -v) cmd_version ;;
+    help | --help | -h) cmd_help ;;
+    *)
+        log_err "Unknown command: $cmd"
+        printf '\n'
+        cmd_help
+        exit 1
+        ;;
+    esac
+}
+
+main "$@"
