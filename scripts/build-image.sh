@@ -1,16 +1,32 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Nexus-Builder Image Generator
+set -euo pipefail
 
-source "$(dirname "$0")/../boards/rk3576-flipper.conf"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Board profile: use the first argument if provided, else the default board.
+BOARD_CONF="${1:-$SCRIPT_DIR/../boards/rk3576-flipper.conf}"
+[[ -f "$BOARD_CONF" ]] || { echo "[ERROR] Board config not found: $BOARD_CONF" >&2; exit 1; }
+
+# shellcheck disable=SC1090  # config path is resolved at runtime
+source "$BOARD_CONF"
 
 echo "--------------------------------------------------"
 echo "Building Image for: $BOARD_NAME ($SOC)"
 echo "--------------------------------------------------"
 
-# Create a 2GB Sparse Image
+# Fail early with a clear message instead of a cryptic error mid-build.
+for tool in truncate sgdisk; do
+    command -v "$tool" >/dev/null 2>&1 || { echo "[ERROR] Required tool '$tool' not found." >&2; exit 1; }
+done
+
+# Create a sparse image large enough for the A/B layout.
+# The two 1 GiB system slots plus the 16 MiB loader and GPT overhead exceed
+# 2 GiB, so a 4 GiB image is the smallest size that fits both slots and leaves
+# room for the userdata partition.
 IMAGE_OUT="output/nexus-os-${BOARD_NAME}.img"
 mkdir -p output
-truncate -s 2G "$IMAGE_OUT"
+truncate -s 4G "$IMAGE_OUT"
 
 # Formatting with GPT and naming partitions
 sgdisk -n 1:0:+16M   -c 1:"loader"   "$IMAGE_OUT"

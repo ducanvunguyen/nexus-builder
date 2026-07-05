@@ -8,7 +8,8 @@ verify_system() {
     echo "[Integrity] Checking $partition..."
     
     # Simulate a hash check
-    local actual_hash=$(sha256sum "$partition" | awk '{print $1}')
+    local actual_hash
+    actual_hash=$(sha256sum "$partition" | awk '{print $1}')
     
     if [ "$actual_hash" == "$expected_hash" ]; then
         return 0
