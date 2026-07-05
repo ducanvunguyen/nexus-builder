@@ -15,7 +15,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Lint shell scripts
         run: |
-          shellcheck nexus core/*.sh scripts/*.sh tests/*.sh
+          shellcheck -x nexus core/*.sh scripts/*.sh tests/*.sh
 
   test:
     name: Test suite
