@@ -14,9 +14,7 @@ setup_immutable_root() {
     mkdir -p $UPPER_DIR $WORK_DIR
 
     # Apply OverlayFS
-    mount -t overlay overlay -o lowerdir=/,upperdir=$UPPER_DIR,workdir=$WORK_DIR /etc
-    
-    if [ $? -eq 0 ]; then
+    if mount -t overlay overlay -o "lowerdir=/,upperdir=$UPPER_DIR,workdir=$WORK_DIR" /etc; then
         echo "[SUCCESS] Immutable layer active. Changes are volatile."
     else
         echo "[ERROR] Failed to protect RootFS."

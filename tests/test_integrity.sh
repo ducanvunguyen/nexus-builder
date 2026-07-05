@@ -1,23 +1,23 @@
-#!/bin/bash
-# Unit test for AB Manager logic
+#!/usr/bin/env bash
+# Unit tests for the integrity checker (core/integrity-check.sh).
 
-source "$(dirname "$0")/../core/ab-mgr.sh"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tests/lib.sh
+source "$HERE/lib.sh"
+# shellcheck source=core/integrity-check.sh
+source "$HERE/../core/integrity-check.sh"
 
-echo "Running Test: AB Slot Switching..."
+echo "Running: integrity check"
 
-# Test 1: Default slot
-slot=$(get_active_slot)
-if [ "$slot" == "A" ]; then
-    echo "[PASS] Initial slot is A"
-else
-    echo "[FAIL] Initial slot is $slot"
-fi
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+printf 'nexus-builder\n' >"$tmp"
 
-# Test 2: Switch to B
-set_active_slot "B"
-slot=$(get_active_slot)
-if [ "$slot" == "B" ]; then
-    echo "[PASS] Switched to B successfully"
-else
-    echo "[FAIL] Failed to switch to B"
-fi
+expected="$(sha256sum "$tmp" | awk '{print $1}')"
+
+assert_eq "$expected" "$(hash_file "$tmp")" "hash_file matches sha256sum"
+assert_ok "verify_system accepts a correct digest" verify_system "$tmp" "$expected"
+assert_fail "verify_system rejects a wrong digest" verify_system "$tmp" "deadbeef"
+assert_fail "verify_system rejects a missing file" verify_system "/no/such/file" "$expected"
+
+test_summary
