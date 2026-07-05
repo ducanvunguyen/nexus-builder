@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# Nexus-Builder — unified command-line interface.
+#
+# A single entrypoint for building, verifying and managing immutable A/B images.
+# Run "nexus help" for the full command list.
+set -euo pipefail
+
+NEXUS_VERSION="0.1.0"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=core/common.sh
+source "$ROOT/core/common.sh"
+# shellcheck source=core/ab-mgr.sh
+source "$ROOT/core/ab-mgr.sh"
+# shellcheck source=core/integrity-check.sh
+source "$ROOT/core/integrity-check.sh"
+
+usage() {
+    cat <<'EOF'
+Nexus-Builder — Immutable Linux Distro Factory
+
+Usage: nexus <command> [args]
+
+Commands:
+  build [board.conf]     Build an A/B image (default: boards/rk3576-flipper.conf)
+  slot get               Print the currently active boot slot (A or B)
+  slot set <A|B>         Set the active boot slot
+  slot switch            Switch to the inactive slot (A <-> B)
+  verify <file> <hash>   Verify a partition/file against an expected SHA256
+  doctor                 Check that required host tools are installed
+  test                   Run the test suite
+  version                Print the Nexus-Builder version
+  help                   Show this help
+
+Environment:
+  NEXUS_UBOOT_ENV        Path to the U-Boot env file (default: /tmp/u-boot-env.sim)
+EOF
+}
+
+cmd_doctor() {
+    log_info "Checking host build dependencies..."
+    local status=0 tool
+    for tool in bash truncate sgdisk sha256sum awk mount; do
+        if require_cmd "$tool"; then
+            log_ok "found: $tool"
+        else
+            log_warn "missing: $tool"
+            status=1
+        fi
+    done
+    if [[ "$status" -eq 0 ]]; then
+        log_ok "All dependencies satisfied."
+    else
+        log_warn "Some tools are missing. 'nexus build' needs truncate + sgdisk."
+    fi
+    return "$status"
+}
+
+cmd_slot() {
+    local sub="${1:-get}"
+    shift || true
+    case "$sub" in
+        get) get_active_slot ;;
+        set)
+            [[ $# -ge 1 ]] || die "usage: nexus slot set <A|B>"
+            switch_boot_slot "$1"
+            ;;
+        switch)
+            local target
+            target="$(other_slot)"
+            switch_boot_slot "$target"
+            ;;
+        *) die "unknown slot subcommand: '$sub' (use get|set|switch)" ;;
+    esac
+}
+
+main() {
+    local cmd="${1:-help}"
+    shift || true
+    case "$cmd" in
+        build)
+            local conf="${1:-$ROOT/boards/rk3576-flipper.conf}"
+            [[ -f "$conf" ]] || die "Board config not found: $conf"
+            require_cmd truncate || die "truncate not found. Run 'nexus doctor'."
+            require_cmd sgdisk || die "sgdisk not found. Run 'nexus doctor' for requirements."
+            "$ROOT/scripts/build-image.sh" "$conf"
+            ;;
+        slot) cmd_slot "$@" ;;
+        verify)
+            [[ $# -ge 2 ]] || die "usage: nexus verify <file> <expected_sha256>"
+            if verify_system "$1" "$2"; then
+                log_ok "Integrity verified: $1"
+            else
+                die "Integrity check FAILED: $1"
+            fi
+            ;;
+        doctor) cmd_doctor ;;
+        test) "$ROOT/tests/run.sh" ;;
+        version) printf 'nexus-builder %s\n' "$NEXUS_VERSION" ;;
+        help | -h | --help) usage ;;
+        *)
+            log_err "Unknown command: '$cmd'"
+            echo
+            usage
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

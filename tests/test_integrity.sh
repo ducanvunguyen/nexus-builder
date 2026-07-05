@@ -1,23 +1,23 @@
-#!/bin/bash
-# Unit test for AB Manager logic
+#!/usr/bin/env bash
+# Unit tests for the integrity checker (core/integrity-check.sh).
+set -u
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-source "$(dirname "$0")/../core/ab-mgr.sh"
+# shellcheck source=tests/lib.sh
+source "$HERE/lib.sh"
+# shellcheck source=core/integrity-check.sh
+source "$HERE/../core/integrity-check.sh"
 
-echo "Running Test: AB Slot Switching..."
+echo "== integrity verification =="
 
-# Test 1: Default slot
-slot=$(get_active_slot)
-if [ "$slot" == "A" ]; then
-    echo "[PASS] Initial slot is A"
-else
-    echo "[FAIL] Initial slot is $slot"
-fi
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
 
-# Test 2: Switch to B
-set_active_slot "B"
-slot=$(get_active_slot)
-if [ "$slot" == "B" ]; then
-    echo "[PASS] Switched to B successfully"
-else
-    echo "[FAIL] Failed to switch to B"
-fi
+payload="$WORK/system_a.img"
+printf 'nexus-immutable-rootfs' >"$payload"
+good_hash="$(sha256sum "$payload" | awk '{print $1}')"
+
+assert_success "verify passes with the correct hash" verify_system "$payload" "$good_hash"
+assert_fail "verify fails with a wrong hash" verify_system "$payload" "deadbeef"
+
+test_summary
