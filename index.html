@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nexus Tools · Private, offline-first web utilities</title>
+    <meta
+      name="description"
+      content="A fast, private, offline-first toolbox of everyday web utilities: password generator, hashing, JSON formatter, image compressor, unit and color converters, and more. No servers, no tracking."
+    />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧰</text></svg>" />
+    <link rel="stylesheet" href="assets/css/style.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <button id="menu-btn" class="icon-btn menu-toggle" aria-label="Toggle menu">☰</button>
+      <div class="brand">
+        <span class="logo">🧰</span>
+        <span>Nexus Tools</span>
+        <span class="tag">private · offline · no tracking</span>
+      </div>
+      <div class="header-spacer"></div>
+      <button id="theme-btn" class="icon-btn" aria-label="Toggle theme">🌙 Dark</button>
+      <a
+        class="icon-btn"
+        href="https://github.com/ducanvunguyen/nexus-builder"
+        target="_blank"
+        rel="noopener"
+        >⭐ Star on GitHub</a
+      >
+    </header>
+
+    <div class="layout">
+      <aside id="sidebar" class="sidebar">
+        <input id="search" class="search" type="text" placeholder="Search tools…" aria-label="Search tools" />
+        <nav id="nav"></nav>
+      </aside>
+      <main id="main" class="main"></main>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <noscript>
+      <p style="padding: 24px">Nexus Tools needs JavaScript enabled — all processing runs locally in your browser.</p>
+    </noscript>
+
+    <script type="module" src="assets/js/app.js"></script>
+  </body>
+</html>

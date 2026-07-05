@@ -1,0 +1,20 @@
+{
+  "name": "nexus-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A fast, private, offline-first toolbox of everyday web utilities. No servers, no tracking, no build step.",
+  "scripts": {
+    "test": "node --test",
+    "serve": "python3 -m http.server 8080"
+  },
+  "keywords": [
+    "tools",
+    "utilities",
+    "offline",
+    "privacy",
+    "developer-tools",
+    "no-dependencies"
+  ],
+  "license": "Apache-2.0"
+}
